@@ -4,7 +4,6 @@ pipeline {
     environment {
         DOCKER_IMAGE   = 'houdanasr/authentication-service'
         VAULT_ADDR     = 'http://host.docker.internal:8200'
-        JENKINS_WS     = '/var/jenkins_home/workspace/authentication-pipeline'
         GH_USER        = 'NASRHOUDA'
     }
 
@@ -115,9 +114,9 @@ pipeline {
                       --volumes-from jenkins \
                       returntocorp/semgrep:latest \
                       semgrep --config=p/security-audit \
-                      /var/jenkins_home/workspace/authentication-pipeline \
+                      "${WORKSPACE}" \
                       --no-git-ignore \
-                      --json --output=/var/jenkins_home/workspace/authentication-pipeline/semgrep-report.json \
+                      --json --output="${WORKSPACE}/semgrep-report.json" \
                     || echo "⚠️ Semgrep scan terminé"
                 '''
                 archiveArtifacts artifacts: 'semgrep-report.json', allowEmptyArchive: true
@@ -178,12 +177,11 @@ pipeline {
         stage('Prepare Trivy Cache') {
             steps {
                 sh '''
-                    mkdir -p /tmp/trivy-cache-authentication
+                    docker volume create trivy-cache-authentication
                     docker run --rm \
-                      -v /tmp/trivy-cache-authentication:/root/.cache/trivy \
+                      -v trivy-cache-authentication:/root/.cache/trivy \
                       aquasec/trivy:latest image \
-                      --download-db-only \
-                      --timeout 5m || echo "⚠️ Erreur download DB - mode offline"
+                      --download-db-only --timeout 5m
                 '''
             }
         }
@@ -193,24 +191,22 @@ pipeline {
                 retry(3) {
                     sh '''
                         set +e
-                        docker run --rm \
-                          --volumes-from jenkins \
+                        docker rm -f trivy-scan-${BUILD_NUMBER} >/dev/null 2>&1 || true
+                        docker run --name trivy-scan-${BUILD_NUMBER} \
                           -v /var/run/docker.sock:/var/run/docker.sock \
-                          -v /tmp/trivy-cache-authentication:/root/.cache/trivy \
-                          -w "${JENKINS_WS}" \
+                          -v trivy-cache-authentication:/root/.cache/trivy \
                           aquasec/trivy:latest image \
                           ${DOCKER_IMAGE}:latest \
                           --severity HIGH,CRITICAL \
                           --exit-code 0 \
                           --timeout 5m \
                           --format json \
-                          --output trivy-report.json
+                          --output /tmp/trivy-report.json
                         RESULT=$?
-                        if [ $RESULT -eq 0 ] || [ $RESULT -eq 1 ]; then
-                            echo "✅ Scan Trivy terminé"
-                            exit 0
-                        else
-                            echo "❌ Erreur lors du scan Trivy - Réessai..."
+                        docker cp trivy-scan-${BUILD_NUMBER}:/tmp/trivy-report.json "${WORKSPACE}/trivy-report.json" 2>/dev/null || echo "⚠️ Rapport Trivy introuvable"
+                        docker rm trivy-scan-${BUILD_NUMBER} >/dev/null 2>&1 || true
+                        if [ $RESULT -ne 0 ]; then
+                            echo "❌ Trivy a échoué (code $RESULT)"
                             exit 1
                         fi
                     '''
@@ -223,6 +219,7 @@ pipeline {
             steps {
                 sh '''
                     set +x
+                    set -e
                     export DOCKER_CONFIG="${WORKSPACE}/.docker-${BUILD_NUMBER}"
                     mkdir -p "${DOCKER_CONFIG}"
                     echo "$DOCKER_PASS" | docker --config "${DOCKER_CONFIG}" login -u "$DOCKER_USER" --password-stdin
@@ -230,7 +227,7 @@ pipeline {
                     docker --config "${DOCKER_CONFIG}" push ${DOCKER_IMAGE}:latest
                     docker --config "${DOCKER_CONFIG}" logout
                     rm -rf "${DOCKER_CONFIG}"
-                    echo "✅ Image poussée vers Docker Hub"
+                    echo "✅ Image poussée vers Docker Hub (tag ${BUILD_NUMBER} et latest confirmés)"
                 '''
             }
         }
@@ -261,14 +258,15 @@ pipeline {
                 sh '''
                     sleep 30
                     flux reconcile source git flux-system --timeout=3m || true
-                    flux reconcile kustomization taskmanager --timeout=3m || true
+                    flux reconcile kustomization authentication-service --timeout=3m || true
                     sleep 20
                     echo "📊 Pods:"
-                    kubectl get pods -n taskmanager -l app=authentication-service || true
+                    kubectl get pods -n microservices -l app=authentication-service || true
                     echo "✅ Déploiement Flux CD complété"
                 '''
             }
         }
+
     }
 
     post {
