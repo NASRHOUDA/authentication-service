@@ -2,7 +2,6 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: authentication-service
-  namespace: taskmanager
   labels:
     app: authentication-service
 spec:
@@ -80,9 +79,9 @@ spec:
               name: authentication-secrets
               key: GOOGLE_CLIENT_SECRET
         - name: GOOGLE_CALLBACK_URL
-          value: "http://localhost/api/auth/google/callback"
+          value: "http://microservices.localhost/api/auth/google/callback"
         - name: FRONTEND_URL
-          value: "http://localhost:3000"
+          value: "http://microservices.localhost"
         resources:
           requests:
             memory: "192Mi"
