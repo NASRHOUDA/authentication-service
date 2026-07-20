@@ -1,12 +1,10 @@
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const { User } = require('../models');
-
 console.log('=== LOADING PASSPORT CONFIG ===');
 console.log('GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID ? '✅ EXISTS (length: ' + process.env.GOOGLE_CLIENT_ID.length + ')' : '❌ MISSING');
 console.log('GOOGLE_CLIENT_SECRET:', process.env.GOOGLE_CLIENT_SECRET ? '✅ EXISTS (length: ' + process.env.GOOGLE_CLIENT_SECRET.length + ')' : '❌ MISSING');
 console.log('===============================');
-
 // Initialise Google OAuth seulement si les credentials existent
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   passport.use(
@@ -14,7 +12,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       {
         clientID: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        callbackURL: '/api/auth/google/callback',
+        callbackURL: process.env.GOOGLE_CALLBACK_URL || '/api/auth/google/callback',
       },
       async (accessToken, refreshToken, profile, done) => {
         try {
@@ -52,5 +50,4 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 } else {
   console.warn('⚠️  Google OAuth not configured - running without Google login');
 }
-
 module.exports = passport;
