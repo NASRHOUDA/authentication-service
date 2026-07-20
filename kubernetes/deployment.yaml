@@ -50,6 +50,13 @@ spec:
         env:
         - name: PORT
           value: "5001"
+        - name: GATEWAY_URL
+          value: "http://api-gateway-service:5000"
+        - name: INTERNAL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: authentication-secrets
+              key: INTERNAL_API_KEY
         - name: DB_HOST
           valueFrom:
             secretKeyRef:
