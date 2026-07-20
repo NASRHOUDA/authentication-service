@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.14.4",
+    "axios": "^1.18.1",
     "bcryptjs": "^2.4.3",
     "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
