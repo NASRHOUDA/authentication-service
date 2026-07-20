@@ -51,17 +51,29 @@ spec:
         - name: PORT
           value: "5001"
         - name: DB_HOST
-          value: taskmanager-db-rw
+          valueFrom:
+            secretKeyRef:
+              name: auth-db-secrets
+              key: DB_HOST
         - name: DB_PORT
-          value: "5432"
+          valueFrom:
+            secretKeyRef:
+              name: auth-db-secrets
+              key: DB_PORT
         - name: DB_NAME
-          value: taskmanager
+          valueFrom:
+            secretKeyRef:
+              name: auth-db-secrets
+              key: DB_NAME
         - name: DB_USER
-          value: postgres
+          valueFrom:
+            secretKeyRef:
+              name: auth-db-secrets
+              key: DB_USER
         - name: DB_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: authentication-secrets
+              name: auth-db-secrets
               key: DB_PASSWORD
         - name: JWT_SECRET
           valueFrom:
