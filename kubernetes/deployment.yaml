@@ -79,9 +79,9 @@ spec:
               name: authentication-secrets
               key: GOOGLE_CLIENT_SECRET
         - name: GOOGLE_CALLBACK_URL
-          value: "http://microservices.localhost/api/auth/google/callback"
+          value: "http://microservices.127.0.0.1.nip.io/api/auth/google/callback"
         - name: FRONTEND_URL
-          value: "http://microservices.localhost"
+          value: "http://microservices.127.0.0.1.nip.io"
         resources:
           requests:
             memory: "192Mi"
