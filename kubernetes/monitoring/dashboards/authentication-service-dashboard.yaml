@@ -120,7 +120,7 @@ data:
           "targets": [
             {
               "editorMode": "code",
-              "expr": "rate(container_cpu_usage_seconds_total{namespace=\"microservices\", pod=~\"authentication-service.*\"}[5m]) * 100",
+              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"microservices\", pod=~\"authentication-service.*\", container!=\"\", container!=\"POD\"}[5m])) by (pod) * 100",
               "legendFormat": "{{pod}}",
               "range": true,
               "refId": "A"
@@ -215,7 +215,7 @@ data:
           "targets": [
             {
               "editorMode": "code",
-              "expr": "container_memory_usage_bytes{namespace=\"microservices\", pod=~\"authentication-service.*\"} / 1024 / 1024",
+              "expr": "sum(container_memory_working_set_bytes{namespace=\"microservices\", pod=~\"authentication-service.*\", container!=\"\", container!=\"POD\"}) by (pod) / 1024 / 1024",
               "legendFormat": "{{pod}}",
               "range": true,
               "refId": "A"
@@ -274,11 +274,7 @@ data:
                 "steps": [
                   {
                     "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "red",
-                    "value": 80
+                    "value": null
                   }
                 ]
               }
@@ -309,20 +305,13 @@ data:
           "targets": [
             {
               "editorMode": "code",
-              "expr": "sum(rate(auth_login_attempts_total{status=\"failed\"}[5m])) by (status)",
-              "legendFormat": "echecs",
+              "expr": "sum(rate(http_request_duration_seconds_count{app=\"authentication-service\", status_code=~\"5..\"}[5m])) by (route)",
+              "legendFormat": "{{route}}",
               "range": true,
               "refId": "A"
-            },
-            {
-              "editorMode": "code",
-              "expr": "sum(rate(auth_login_attempts_total{status=\"success\"}[5m])) by (status)",
-              "legendFormat": "succes",
-              "range": true,
-              "refId": "B"
             }
           ],
-          "title": "auth-service — Tentatives de login (/s)",
+          "title": "auth-service — Erreurs 5xx par route (/s)",
           "type": "timeseries"
         },
         {
@@ -350,10 +339,11 @@ data:
                   }
                 ]
               }
-            }
+            },
+            "overrides": []
           },
           "gridPos": {
-            "h": 4,
+            "h": 6,
             "w": 8,
             "x": 0,
             "y": 7
@@ -365,7 +355,9 @@ data:
             "justifyMode": "auto",
             "orientation": "auto",
             "reduceOptions": {
-              "calcs": ["lastNotNull"],
+              "calcs": [
+                "lastNotNull"
+              ],
               "fields": "",
               "values": false
             },
@@ -389,7 +381,41 @@ data:
           "fieldConfig": {
             "defaults": {
               "color": {
-                "mode": "thresholds"
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "axisBorderShow": false,
+                "axisCenteredZero": false,
+                "axisColorMode": "text",
+                "axisLabel": "",
+                "axisPlacement": "auto",
+                "barAlignment": 0,
+                "barWidthFactor": 0.6,
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "gradientMode": "none",
+                "hideFrom": {
+                  "legend": false,
+                  "tooltip": false,
+                  "viz": false
+                },
+                "insertNulls": false,
+                "lineInterpolation": "linear",
+                "lineWidth": 1,
+                "pointSize": 5,
+                "scaleDistribution": {
+                  "type": "linear"
+                },
+                "showPoints": "auto",
+                "showValues": false,
+                "spanNulls": false,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                },
+                "thresholdsStyle": {
+                  "mode": "off"
+                }
               },
               "mappings": [],
               "thresholds": {
@@ -397,52 +423,46 @@ data:
                 "steps": [
                   {
                     "color": "green",
-                    "value": 0
-                  },
-                  {
-                    "color": "orange",
-                    "value": 0.1
-                  },
-                  {
-                    "color": "red",
-                    "value": 0.3
+                    "value": null
                   }
                 ]
               },
-              "unit": "percentunit"
-            }
+              "unit": "s"
+            },
+            "overrides": []
           },
           "gridPos": {
-            "h": 4,
+            "h": 6,
             "w": 8,
             "x": 8,
             "y": 7
           },
           "id": 5,
           "options": {
-            "colorMode": "value",
-            "graphMode": "area",
-            "justifyMode": "auto",
-            "orientation": "auto",
-            "reduceOptions": {
-              "calcs": ["lastNotNull"],
-              "fields": "",
-              "values": false
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
             },
-            "textMode": "auto",
-            "wideLayout": true
+            "tooltip": {
+              "hideZeros": false,
+              "mode": "single",
+              "sort": "none"
+            }
           },
+          "pluginVersion": "12.3.1",
           "targets": [
             {
               "editorMode": "code",
-              "expr": "(sum(rate(auth_login_attempts_total{status=\"failed\"}[5m])) OR on() vector(0)) / sum(rate(auth_login_attempts_total[5m]))",
-              "legendFormat": "taux echec",
+              "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{app=\"authentication-service\"}[5m])) by (le, route))",
+              "legendFormat": "{{route}}",
               "range": true,
               "refId": "A"
             }
           ],
-          "title": "auth-service — Alerte: taux d'echec login",
-          "type": "stat"
+          "title": "auth-service — Latence p95 par route",
+          "type": "timeseries"
         },
         {
           "datasource": {
@@ -463,15 +483,21 @@ data:
                     "value": 0
                   },
                   {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
                     "color": "red",
-                    "value": 80
+                    "value": 5
                   }
                 ]
-              }
-            }
+              },
+              "unit": "percent"
+            },
+            "overrides": []
           },
           "gridPos": {
-            "h": 4,
+            "h": 6,
             "w": 8,
             "x": 16,
             "y": 7
@@ -483,7 +509,9 @@ data:
             "justifyMode": "auto",
             "orientation": "auto",
             "reduceOptions": {
-              "calcs": ["lastNotNull"],
+              "calcs": [
+                "lastNotNull"
+              ],
               "fields": "",
               "values": false
             },
@@ -493,20 +521,24 @@ data:
           "targets": [
             {
               "editorMode": "code",
-              "expr": "sum(rate(auth_oauth_failures_total[5m])) by (reason)",
-              "legendFormat": "{{reason}}",
+              "expr": "100 * sum(rate(http_request_duration_seconds_count{app=\"authentication-service\", status_code=~\"5..\"}[5m])) / sum(rate(http_request_duration_seconds_count{app=\"authentication-service\"}[5m]))",
+              "legendFormat": "taux erreur %",
               "range": true,
               "refId": "A"
             }
           ],
-          "title": "auth-service — Echecs OAuth par raison",
+          "title": "auth-service — Alerte: taux erreur 5xx (%)",
           "type": "stat"
         }
       ],
       "preload": false,
       "refresh": "10s",
       "schemaVersion": 42,
-      "tags": ["microservices", "authentication-service", "devsecops"],
+      "tags": [
+        "microservices",
+        "authentication-service",
+        "devsecops"
+      ],
       "templating": {
         "list": []
       },
@@ -518,5 +550,5 @@ data:
       "timezone": "browser",
       "title": "auth-service - Metrics & Logs",
       "uid": "authentication-service-dashboard",
-      "version": 1
+      "version": 2
     }
