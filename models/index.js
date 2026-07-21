@@ -15,6 +15,6 @@ const sequelize = new Sequelize(
   }
 );
 
-const User = require("./User")(sequelize);
+const Auth = require("./Auth")(sequelize);
 
-module.exports = { sequelize, User };
+module.exports = { sequelize, Auth };

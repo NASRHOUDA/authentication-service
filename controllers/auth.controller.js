@@ -1,10 +1,10 @@
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
-const { User } = require('../models');
+const { Auth } = require('../models');
+const userService = require('../services/userServiceClient');
 
-const generateToken = (user) => {
+const generateToken = (userId, email, provider) => {
   return jwt.sign(
-    { id: user.id, email: user.email, provider: user.provider },
+    { id: userId, email, provider },
     process.env.JWT_SECRET,
     { expiresIn: "7d" }
   );
@@ -13,12 +13,21 @@ const generateToken = (user) => {
 const register = async (req, res) => {
   try {
     const { email, password, name } = req.body;
-    const existingUser = await User.findOne({ where: { email } });
+
+    const existingUser = await userService.findUserByEmail(email);
     if (existingUser) {
       return res.status(400).json({ error: "Email already exists" });
     }
-    const user = await User.create({ email, password, name, provider: "local" });
-    const token = generateToken(user);
+
+    const user = await userService.createUser({ email, name });
+
+    const auth = await Auth.create({
+      userId: user.id,
+      provider: "local",
+      passwordHash: password,
+    });
+
+    const token = generateToken(user.id, user.email, auth.provider);
     res.json({
       message: "User registered successfully",
       token,
@@ -32,15 +41,23 @@ const register = async (req, res) => {
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ where: { email } });
+
+    const user = await userService.findUserByEmail(email);
     if (!user) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
-    const isValid = await user.validatePassword(password);
+
+    const auth = await Auth.findOne({ where: { userId: user.id } });
+    if (!auth || auth.provider !== "local") {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const isValid = await auth.validatePassword(password);
     if (!isValid) {
       return res.status(401).json({ error: "Invalid credentials" });
     }
-    const token = generateToken(user);
+
+    const token = generateToken(user.id, user.email, auth.provider);
     res.json({
       message: "Login successful",
       token,
@@ -53,9 +70,10 @@ const login = async (req, res) => {
 
 const changePassword = async (req, res) => {
   try {
-    const user = req.user;
+    const auth = await Auth.findOne({ where: { userId: req.user.id } });
+    if (!auth) return res.status(404).json({ error: "Auth record not found" });
 
-    if (user.provider !== "local") {
+    if (auth.provider !== "local") {
       return res.status(403).json({
         error: "Password change is not available for accounts authenticated via Google. Manage your password directly in your Google account.",
       });
@@ -70,13 +88,13 @@ const changePassword = async (req, res) => {
       return res.status(400).json({ error: "New password must be at least 6 characters" });
     }
 
-    const isValid = await user.validatePassword(currentPassword);
+    const isValid = await auth.validatePassword(currentPassword);
     if (!isValid) {
       return res.status(401).json({ error: "Current password is incorrect" });
     }
 
-    user.password = await bcrypt.hash(newPassword, 10);
-    await user.save();
+    auth.passwordHash = newPassword;
+    await auth.save();
 
     res.json({ message: "Password changed successfully" });
   } catch (error) {
