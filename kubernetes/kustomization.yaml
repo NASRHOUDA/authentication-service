@@ -5,3 +5,4 @@ resources:
   - service.yaml
   - external-secret.yaml
   - external-secret-db.yaml
+  - monitoring/dashboards/authentication-service-dashboard.yaml
