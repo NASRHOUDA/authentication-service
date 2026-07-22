@@ -37,7 +37,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
               if (auth) {
                 await auth.update({ provider: 'google', providerId: profile.id });
               } else {
-                auth = await Auth.create({
+                await Auth.create({
                   userId: user.id,
                   provider: 'google',
                   providerId: profile.id,
@@ -48,7 +48,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
                 email,
                 name: profile.displayName,
               });
-              auth = await Auth.create({
+              await Auth.create({
                 userId: user.id,
                 provider: 'google',
                 providerId: profile.id,

@@ -48,7 +48,7 @@ const login = async (req, res) => {
     }
 
     const auth = await Auth.findOne({ where: { userId: user.id } });
-    if (!auth || auth.provider !== "local") {
+    if (auth?.provider !== "local") {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
