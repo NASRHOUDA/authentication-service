@@ -45,7 +45,7 @@ spec:
             app: authentication-service
       containers:
       - name: authentication-service
-        image: houdanasr/authentication-service:16
+        image: houdanasr/authentication-service:17
         ports:
         - containerPort: 5001
         env:
