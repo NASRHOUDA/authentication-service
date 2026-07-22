@@ -366,7 +366,7 @@ data:
           },
           "targets": [
             {
-              "expr": "count_over_time({namespace=\"microservices\", pod=~\"authentication-service.*\"} |~ \"token.*expired|jwt.*invalid|oauth.*fail|invalid.*credentials\" [5m])",
+              "expr": "count_over_time({namespace=\"microservices\", pod=~\"authentication-service.*\"} |~ \"(?i)login failed|register failed|change password failed\" [5m])",
               "refId": "A"
             }
           ],
