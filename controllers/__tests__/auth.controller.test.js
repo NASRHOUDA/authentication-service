@@ -1,60 +1,51 @@
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
 const { register, login, changePassword } = require('../auth.controller');
-const { User } = require('../../models');
+const { Auth } = require('../../models');
+const userService = require('../../services/userServiceClient');
 
-jest.mock('jsonwebtoken');
-jest.mock('bcryptjs');
 jest.mock('../../models', () => ({
-  User: {
-    findOne: jest.fn(),
+  Auth: {
     create: jest.fn(),
+    findOne: jest.fn(),
   },
 }));
+jest.mock('../../services/userServiceClient', () => ({
+  findUserByEmail: jest.fn(),
+  createUser: jest.fn(),
+  getUserById: jest.fn(),
+}));
+jest.mock('jsonwebtoken');
 
 describe('Auth Controller', () => {
   let req, res;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    req = {
-      body: {},
-      user: null,
-    };
-    res = {
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn(),
-    };
+    req = { body: {}, user: null };
+    res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
     process.env.JWT_SECRET = 'test-secret';
   });
 
   describe('register', () => {
     test('should register a new user successfully', async () => {
-      req.body = {
-        email: 'test@example.com',
-        password: 'password123',
-        name: 'Test User',
-      };
-
-      User.findOne.mockResolvedValue(null);
-      const mockUser = {
-        id: 1,
-        email: 'test@example.com',
-        name: 'Test User',
-        provider: 'local',
-      };
-      User.create.mockResolvedValue(mockUser);
+      req.body = { email: 'test@example.com', password: 'password123', name: 'Test User' };
+      userService.findUserByEmail.mockResolvedValue(null);
+      const mockUser = { id: 1, email: 'test@example.com', name: 'Test User' };
+      userService.createUser.mockResolvedValue(mockUser);
+      const mockAuth = { provider: 'local' };
+      Auth.create.mockResolvedValue(mockAuth);
       jwt.sign.mockReturnValue('fake-token');
 
       await register(req, res);
 
-      expect(User.findOne).toHaveBeenCalledWith({ where: { email: 'test@example.com' } });
-      expect(User.create).toHaveBeenCalledWith({
-        email: 'test@example.com',
-        password: 'password123',
-        name: 'Test User',
-        provider: 'local',
-      });
+      expect(userService.findUserByEmail).toHaveBeenCalledWith('test@example.com');
+      expect(userService.createUser).toHaveBeenCalledWith({ email: 'test@example.com', name: 'Test User' });
+      expect(Auth.create).toHaveBeenCalledWith({ userId: 1, provider: 'local', passwordHash: 'password123' });
+      expect(jwt.sign).toHaveBeenCalledWith(
+        { id: 1, email: 'test@example.com', provider: 'local' },
+        'test-secret',
+        { expiresIn: '7d' }
+      );
       expect(res.json).toHaveBeenCalledWith({
         message: 'User registered successfully',
         token: 'fake-token',
@@ -63,29 +54,19 @@ describe('Auth Controller', () => {
     });
 
     test('should return 400 if email already exists', async () => {
-      req.body = {
-        email: 'existing@example.com',
-        password: 'password123',
-        name: 'Test User',
-      };
-
-      User.findOne.mockResolvedValue({ id: 1, email: 'existing@example.com' });
+      req.body = { email: 'existing@example.com', password: 'password123', name: 'Test User' };
+      userService.findUserByEmail.mockResolvedValue({ id: 1, email: 'existing@example.com' });
 
       await register(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({ error: 'Email already exists' });
-      expect(User.create).not.toHaveBeenCalled();
+      expect(Auth.create).not.toHaveBeenCalled();
     });
 
     test('should handle errors', async () => {
-      req.body = {
-        email: 'test@example.com',
-        password: 'password123',
-        name: 'Test User',
-      };
-
-      User.findOne.mockRejectedValue(new Error('Database error'));
+      req.body = { email: 'test@example.com', password: 'password123', name: 'Test User' };
+      userService.findUserByEmail.mockRejectedValue(new Error('Database error'));
 
       await register(req, res);
 
@@ -96,25 +77,18 @@ describe('Auth Controller', () => {
 
   describe('login', () => {
     test('should login successfully with valid credentials', async () => {
-      req.body = {
-        email: 'test@example.com',
-        password: 'password123',
-      };
-
-      const mockUser = {
-        id: 1,
-        email: 'test@example.com',
-        name: 'Test User',
-        provider: 'local',
-        validatePassword: jest.fn().mockResolvedValue(true),
-      };
-      User.findOne.mockResolvedValue(mockUser);
+      req.body = { email: 'test@example.com', password: 'password123' };
+      const mockUser = { id: 1, email: 'test@example.com', name: 'Test User' };
+      userService.findUserByEmail.mockResolvedValue(mockUser);
+      const mockAuth = { provider: 'local', validatePassword: jest.fn().mockResolvedValue(true) };
+      Auth.findOne.mockResolvedValue(mockAuth);
       jwt.sign.mockReturnValue('fake-token');
 
       await login(req, res);
 
-      expect(User.findOne).toHaveBeenCalledWith({ where: { email: 'test@example.com' } });
-      expect(mockUser.validatePassword).toHaveBeenCalledWith('password123');
+      expect(userService.findUserByEmail).toHaveBeenCalledWith('test@example.com');
+      expect(Auth.findOne).toHaveBeenCalledWith({ where: { userId: 1 } });
+      expect(mockAuth.validatePassword).toHaveBeenCalledWith('password123');
       expect(res.json).toHaveBeenCalledWith({
         message: 'Login successful',
         token: 'fake-token',
@@ -123,12 +97,31 @@ describe('Auth Controller', () => {
     });
 
     test('should return 401 if user not found', async () => {
-      req.body = {
-        email: 'nonexistent@example.com',
-        password: 'password123',
-      };
+      req.body = { email: 'nonexistent@example.com', password: 'password123' };
+      userService.findUserByEmail.mockResolvedValue(null);
 
-      User.findOne.mockResolvedValue(null);
+      await login(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Invalid credentials' });
+      expect(Auth.findOne).not.toHaveBeenCalled();
+    });
+
+    test('should return 401 if auth provider is not local', async () => {
+      req.body = { email: 'test@example.com', password: 'password123' };
+      userService.findUserByEmail.mockResolvedValue({ id: 1, email: 'test@example.com' });
+      Auth.findOne.mockResolvedValue({ provider: 'google' });
+
+      await login(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Invalid credentials' });
+    });
+
+    test('should return 401 if auth record is null', async () => {
+      req.body = { email: 'test@example.com', password: 'password123' };
+      userService.findUserByEmail.mockResolvedValue({ id: 1, email: 'test@example.com' });
+      Auth.findOne.mockResolvedValue(null);
 
       await login(req, res);
 
@@ -137,18 +130,10 @@ describe('Auth Controller', () => {
     });
 
     test('should return 401 if password is invalid', async () => {
-      req.body = {
-        email: 'test@example.com',
-        password: 'wrongpassword',
-      };
-
-      const mockUser = {
-        id: 1,
-        email: 'test@example.com',
-        name: 'Test User',
-        validatePassword: jest.fn().mockResolvedValue(false),
-      };
-      User.findOne.mockResolvedValue(mockUser);
+      req.body = { email: 'test@example.com', password: 'wrongpassword' };
+      userService.findUserByEmail.mockResolvedValue({ id: 1, email: 'test@example.com' });
+      const mockAuth = { provider: 'local', validatePassword: jest.fn().mockResolvedValue(false) };
+      Auth.findOne.mockResolvedValue(mockAuth);
 
       await login(req, res);
 
@@ -157,12 +142,8 @@ describe('Auth Controller', () => {
     });
 
     test('should handle errors', async () => {
-      req.body = {
-        email: 'test@example.com',
-        password: 'password123',
-      };
-
-      User.findOne.mockRejectedValue(new Error('Database error'));
+      req.body = { email: 'test@example.com', password: 'password123' };
+      userService.findUserByEmail.mockRejectedValue(new Error('Database error'));
 
       await login(req, res);
 
@@ -173,39 +154,39 @@ describe('Auth Controller', () => {
 
   describe('changePassword', () => {
     test('should change password successfully for local user', async () => {
-      req.body = {
-        currentPassword: 'oldpassword',
-        newPassword: 'newpassword123',
-      };
-      const mockUser = {
-        id: 1,
-        email: 'test@example.com',
+      const mockAuth = {
         provider: 'local',
         validatePassword: jest.fn().mockResolvedValue(true),
         save: jest.fn().mockResolvedValue(true),
       };
-      req.user = mockUser;
-      bcrypt.hash.mockResolvedValue('hashed-new-password');
+      Auth.findOne.mockResolvedValue(mockAuth);
+      req.user = { id: 1 };
+      req.body = { currentPassword: 'oldpassword', newPassword: 'newpassword123' };
 
       await changePassword(req, res);
 
-      expect(mockUser.validatePassword).toHaveBeenCalledWith('oldpassword');
-      expect(bcrypt.hash).toHaveBeenCalledWith('newpassword123', 10);
-      expect(mockUser.password).toBe('hashed-new-password');
-      expect(mockUser.save).toHaveBeenCalled();
+      expect(Auth.findOne).toHaveBeenCalledWith({ where: { userId: 1 } });
+      expect(mockAuth.validatePassword).toHaveBeenCalledWith('oldpassword');
+      expect(mockAuth.passwordHash).toBe('newpassword123');
+      expect(mockAuth.save).toHaveBeenCalled();
       expect(res.json).toHaveBeenCalledWith({ message: 'Password changed successfully' });
     });
 
+    test('should return 404 if auth record not found', async () => {
+      Auth.findOne.mockResolvedValue(null);
+      req.user = { id: 1 };
+      req.body = { currentPassword: 'oldpassword', newPassword: 'newpassword123' };
+
+      await changePassword(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Auth record not found' });
+    });
+
     test('should return 403 for Google users', async () => {
-      req.body = {
-        currentPassword: 'oldpassword',
-        newPassword: 'newpassword123',
-      };
-      req.user = {
-        id: 1,
-        email: 'test@example.com',
-        provider: 'google',
-      };
+      Auth.findOne.mockResolvedValue({ provider: 'google' });
+      req.user = { id: 1 };
+      req.body = { currentPassword: 'oldpassword', newPassword: 'newpassword123' };
 
       await changePassword(req, res);
 
@@ -216,8 +197,9 @@ describe('Auth Controller', () => {
     });
 
     test('should return 400 if passwords are missing', async () => {
+      Auth.findOne.mockResolvedValue({ provider: 'local' });
+      req.user = { id: 1 };
       req.body = {};
-      req.user = { id: 1, provider: 'local' };
 
       await changePassword(req, res);
 
@@ -226,11 +208,9 @@ describe('Auth Controller', () => {
     });
 
     test('should return 400 if new password is too short', async () => {
-      req.body = {
-        currentPassword: 'oldpassword',
-        newPassword: '123',
-      };
-      req.user = { id: 1, provider: 'local' };
+      Auth.findOne.mockResolvedValue({ provider: 'local' });
+      req.user = { id: 1 };
+      req.body = { currentPassword: 'oldpassword', newPassword: '123' };
 
       await changePassword(req, res);
 
@@ -239,16 +219,10 @@ describe('Auth Controller', () => {
     });
 
     test('should return 401 if current password is incorrect', async () => {
-      req.body = {
-        currentPassword: 'wrongpassword',
-        newPassword: 'newpassword123',
-      };
-      const mockUser = {
-        id: 1,
-        provider: 'local',
-        validatePassword: jest.fn().mockResolvedValue(false),
-      };
-      req.user = mockUser;
+      const mockAuth = { provider: 'local', validatePassword: jest.fn().mockResolvedValue(false) };
+      Auth.findOne.mockResolvedValue(mockAuth);
+      req.user = { id: 1 };
+      req.body = { currentPassword: 'wrongpassword', newPassword: 'newpassword123' };
 
       await changePassword(req, res);
 
@@ -257,16 +231,10 @@ describe('Auth Controller', () => {
     });
 
     test('should handle errors', async () => {
-      req.body = {
-        currentPassword: 'oldpassword',
-        newPassword: 'newpassword123',
-      };
-      const mockUser = {
-        id: 1,
-        provider: 'local',
-        validatePassword: jest.fn().mockRejectedValue(new Error('Validation error')),
-      };
-      req.user = mockUser;
+      const mockAuth = { provider: 'local', validatePassword: jest.fn().mockRejectedValue(new Error('Validation error')) };
+      Auth.findOne.mockResolvedValue(mockAuth);
+      req.user = { id: 1 };
+      req.body = { currentPassword: 'oldpassword', newPassword: 'newpassword123' };
 
       await changePassword(req, res);
 
